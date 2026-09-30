@@ -1,15 +1,17 @@
 ---@diagnostic disable
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
-local extendGrabLine = ReplicatedStorage:FindFirstChild("GrabEvents")
-extendGrabLine = extendGrabLine and extendGrabLine:FindFirstChild("ExtendGrabLine")
+
+local ExtendGrabLine = ReplicatedStorage:FindFirstChild("GrabEvents")
+ExtendGrabLine = ExtendGrabLine and ExtendGrabLine:FindFirstChild("ExtendGrabLine")
 
 if getgenv().RAPUnload then pcall(getgenv().RAPUnload) end
 
-local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
-local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
-local selectedPlayer, selectedCommand, commandArguments
-local resonanceUsers, connections = {}, {}
+local Repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+local Library = loadstring(game:HttpGet(Repo .. "Library.lua"))()
+local SelectedPlayer, SelectedCommand, CommandArguments
+local ResonanceUsers = {}
+local Connections = {}
 
 local Commands = {
     ["Bring"] = "r.bring",
@@ -31,22 +33,23 @@ local Commands = {
     ["Stop Ear Destroy"] = "r.unearsdestroy"
 }
 
-local function notify(description, title)
+local function Notify(Description, Title)
     Library:Notify({
-        Title = title or "Admin Panel",
-        Description = description,
+        Title = Title or "Admin Panel",
+        Description = Description,
         Time = 5,
         SoundId = 97643101798871
     })
 end
 
-if not extendGrabLine then
-    notify("Failed to find ExtendGrabLine; the admin panel cannot start.")
+if not ExtendGrabLine then
+    Notify("Failed to find ExtendGrabLine; the admin panel cannot start.")
     return
 end
 
 Library.ForceCheckbox = true
-local window = Library:CreateWindow({
+
+local Window = Library:CreateWindow({
     Title = "Admin Panel",
     ToggleKeybind = Enum.KeyCode.RightShift,
     Center = true,
@@ -58,107 +61,157 @@ local window = Library:CreateWindow({
     Compact = true
 })
 
-local mainTab = window:AddTab("Main", "home")
-local settingsTab = window:AddTab("Settings", "settings")
-local commandSection = mainTab:AddLeftGroupbox("Admin Commands")
-local statusLabel = commandSection:AddLabel("No active Resonance users")
-local userDropdown
+local MainTab = Window:AddTab("Main", "layout-grid")
+local SettingsTab = Window:AddTab("Settings", "settings")
+local CommandSection = MainTab:AddLeftGroupbox("Admin Commands")
+local StatusLabel = CommandSection:AddLabel("No active Resonance users")
+local UserDropdown
 
-local function formatPlayer(player)
-    if typeof(player) ~= "Instance" then return tostring(player) end
-    return player.DisplayName == player.Name and player.Name or player.DisplayName .. " (@" .. player.Name .. ")"
+local function FormatPlayer(Player)
+    if typeof(Player) ~= "Instance" then return tostring(Player) end
+
+    return if Player.DisplayName == Player.Name then Player.Name else Player.DisplayName .. " (@" .. Player.Name .. ")"
 end
 
-local function refreshUsers()
-    local users = {}
-    for player in pairs(resonanceUsers) do
-        if player.Parent == Players then users[#users + 1] = player end
+local function RefreshUsers()
+    local Users = {}
+
+    for Player in pairs(ResonanceUsers) do
+        if Player.Parent == Players then
+            Users[#Users + 1] = Player
+        end
     end
-    table.sort(users, function(a, b) return a.Name:lower() < b.Name:lower() end)
-    userDropdown:SetValues(users)
-    if selectedPlayer and not resonanceUsers[selectedPlayer] then
-        selectedPlayer = nil
-        userDropdown:SetValue(nil)
+
+    table.sort(Users, function(A, B)
+        return A.Name:lower() < B.Name:lower()
+    end)
+
+    UserDropdown:SetValues(Users)
+
+    if SelectedPlayer and not ResonanceUsers[SelectedPlayer] then
+        SelectedPlayer = nil
+        UserDropdown:SetValue(nil)
     end
-    statusLabel:SetText(("Active Resonance users: %d"):format(#users))
+
+    StatusLabel:SetText(("Active Resonance users: %d"):format(#Users))
 end
 
-commandSection:AddDivider("Target")
-userDropdown = commandSection:AddDropdown("ResonanceUsers", {
+CommandSection:AddDivider("Target")
+UserDropdown = CommandSection:AddDropdown("ResonanceUsers", {
     Values = {},
     Default = nil,
     Multi = false,
     Searchable = true,
     Text = "Resonance User",
-    FormatListValue = formatPlayer,
-    FormatDisplayValue = formatPlayer,
+    FormatListValue = FormatPlayer,
+    FormatDisplayValue = FormatPlayer,
     EnablePlayerImages = true,
-    Callback = function(value) selectedPlayer = value end
+    Callback = function(Value) SelectedPlayer = Value end
 })
 
-local commandNames = {}
-for name in pairs(Commands) do commandNames[#commandNames + 1] = name end
-table.sort(commandNames)
+local CommandNames = {}
 
-commandSection:AddDivider("Command")
-commandSection:AddDropdown("AdminCommand", {
-    Values = commandNames,
+for Name in pairs(Commands) do
+    CommandNames[#CommandNames + 1] = Name
+end
+
+table.sort(CommandNames)
+
+CommandSection:AddDivider("Command")
+CommandSection:AddDropdown("AdminCommand", {
+    Values = CommandNames,
     Default = nil,
     Multi = false,
     Searchable = true,
     Text = "Command",
-    Callback = function(value) selectedCommand = Commands[value] end
+    Callback = function(Value) SelectedCommand = Commands[Value] end
 })
-commandSection:AddInput("CommandArguments", {
+
+CommandSection:AddInput("CommandArguments", {
     Text = "Arguments",
     Default = "",
     Placeholder = "Optional command arguments",
-    Callback = function(value) commandArguments = tostring(value or "") end
+    Callback = function(Value) CommandArguments = tostring(Value or "") end
 })
-commandSection:AddButton({
+
+CommandSection:AddButton({
     Text = "Run Command",
     Func = function()
-        if not selectedPlayer or not resonanceUsers[selectedPlayer] then
-            return notify("Select an active Resonance user.")
+        if not SelectedPlayer or not ResonanceUsers[SelectedPlayer] then
+            return Notify("Select an active Resonance user.")
         end
-        if not selectedCommand then return notify("Select a command.") end
-        local payload = selectedCommand .. " " .. selectedPlayer.Name
-        if commandArguments and commandArguments ~= "" then payload ..= " " .. commandArguments end
-        extendGrabLine:FireServer(payload)
+
+        if not SelectedCommand then return Notify("Select a command.") end
+
+        local Payload = SelectedCommand .. " " .. SelectedPlayer.Name
+        if CommandArguments and CommandArguments ~= "" then
+            Payload ..= " " .. CommandArguments
+        end
+
+        ExtendGrabLine:FireServer(Payload)
     end
 })
 
-local menuSection = settingsTab:AddLeftGroupbox("Menu")
-Library.ToggleKeybind = menuSection:AddLabel("Menu Keybind"):AddKeyPicker("AdminMenuKeybind", {
+local MenuSection = SettingsTab:AddLeftGroupbox("Menu")
+
+MenuSection:AddLabel("Menu Keybind"):AddKeyPicker("AMenuKeybind", {
     Text = "Menu Keybind",
     Mode = "Toggle",
     Default = "RightShift",
     NoUI = false
 })
-menuSection:AddButton({Text = "Unload Admin Panel", Func = function() Library:Unload() end})
+Library.ToggleKeybind = Library.Options.AMenuKeybind
 
-connections[#connections + 1] = extendGrabLine.OnClientEvent:Connect(function(player, message)
-    if type(message) ~= "string" or message:sub(1, 11) ~= "r.presence " then return end
-    local state = string.split(message, " ")[2]
-    if state == "online" then
-        resonanceUsers[player] = true
-    elseif state == "offline" then
-        resonanceUsers[player] = nil
+MenuSection:AddButton({
+    Text = "Unload Admin Panel",
+    Func = function()
+        Library:Unload()
     end
-    refreshUsers()
-end)
-connections[#connections + 1] = Players.PlayerRemoving:Connect(function(player)
-    resonanceUsers[player] = nil
-    refreshUsers()
+})
+
+Connections[#Connections + 1] = ExtendGrabLine.OnClientEvent:Connect(function(Player, Message)
+    if type(Message) ~= "string" or Message:sub(1, 11) ~= "r.presence " then return end
+
+    local State = string.split(Message, " ")[2]
+    if State == "online" then
+        ResonanceUsers[Player] = true
+    elseif State == "offline" then
+        ResonanceUsers[Player] = nil
+    end
+
+    RefreshUsers()
 end)
 
-local unloadPanel
-unloadPanel = function() Library:Unload() end
-getgenv().RAPUnload = unloadPanel
+Connections[#Connections + 1] = Players.PlayerRemoving:Connect(function(Player)
+    ResonanceUsers[Player] = nil
+    RefreshUsers()
+end)
+
+local PresenceT
+
+local function UnloadPanel()
+    Library:Unload()
+end
+
+getgenv().RAPUnload = UnloadPanel
+
 Library:OnUnload(function()
-    for _, connection in ipairs(connections) do connection:Disconnect() end
-    table.clear(resonanceUsers)
-    if getgenv().RAPUnload == unloadPanel then getgenv().RAPUnload = nil end
+    if PresenceT then task.cancel(PresenceT) end
+
+    for _, Connection in ipairs(Connections) do
+        Connection:Disconnect()
+    end
+
+    table.clear(ResonanceUsers)
+
+    if getgenv().RAPUnload == UnloadPanel then
+        getgenv().RAPUnload = nil
+    end
 end)
 
-extendGrabLine:FireServer("r.presence query " .. tostring(math.random(100000, 999999)))
+PresenceT = task.spawn(function()
+    while not Library.Unloaded do
+        ExtendGrabLine:FireServer("r.presence query " .. tostring(math.random(100000, 999999)))
+        task.wait(2)
+    end
+end)
