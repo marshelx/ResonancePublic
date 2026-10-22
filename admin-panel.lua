@@ -1,6 +1,7 @@
 ---@diagnostic disable
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
 
 local ExtendGrabLine = ReplicatedStorage:FindFirstChild("GrabEvents")
 ExtendGrabLine = ExtendGrabLine and ExtendGrabLine:FindFirstChild("ExtendGrabLine")
@@ -12,6 +13,8 @@ local Library = loadstring(game:HttpGet(Repo .. "Library.lua"))()
 local SelectedPlayer, SelectedCommand, CommandArguments
 local ResonanceUsers = {}
 local Connections = {}
+local UserDetection = true
+local Query = HttpService:GenerateGUID(false)
 
 local Commands = {
     ["Bring"] = "r.bring",
@@ -64,21 +67,24 @@ local Window = Library:CreateWindow({
 local MainTab = Window:AddTab("Main", "layout-grid")
 local SettingsTab = Window:AddTab("Settings", "settings")
 local CommandSection = MainTab:AddLeftGroupbox("Admin Commands")
-local StatusLabel = CommandSection:AddLabel("No active Resonance users")
+local StatusLabel = CommandSection:AddLabel("No active Resonance users", true)
 local UserDropdown
 
 local function FormatPlayer(Player)
     if typeof(Player) ~= "Instance" then return tostring(Player) end
 
-    return if Player.DisplayName == Player.Name then Player.Name else Player.DisplayName .. " (@" .. Player.Name .. ")"
+    local Name = if Player.DisplayName == Player.Name then Player.Name else Player.DisplayName .. " (@" .. Player.Name .. ")"
+    return Name .. " [" .. (ResonanceUsers[Player] or "Unknown") .. "]"
 end
 
 local function RefreshUsers()
     local Users = {}
+    local Current, Old = 0, 0
 
-    for Player in pairs(ResonanceUsers) do
+    for Player, Build in pairs(ResonanceUsers) do
         if Player.Parent == Players then
             Users[#Users + 1] = Player
+            if Build == "Current" then Current += 1 else Old += 1 end
         end
     end
 
@@ -93,7 +99,12 @@ local function RefreshUsers()
         UserDropdown:SetValue(nil)
     end
 
-    StatusLabel:SetText(("Active Resonance users: %d"):format(#Users))
+    StatusLabel:SetText(("Resonance users: %d | Current: %d | Cracked / Old: %d"):format(#Users, Current, Old))
+end
+
+local function QueryUsers()
+    ExtendGrabLine:FireServer("r.discover 2 " .. Query)
+    ExtendGrabLine:FireServer("r.presence query " .. Query)
 end
 
 CommandSection:AddDivider("Target")
@@ -153,6 +164,22 @@ CommandSection:AddButton({
 })
 
 local MenuSection = SettingsTab:AddLeftGroupbox("Menu")
+local DetectionSection = SettingsTab:AddRightGroupbox("User Detection")
+
+DetectionSection:AddToggle("UserDetection", {
+    Text = "Send Detection Queries",
+    Default = true,
+    Tooltip = "Detects resonance users. Turning this off keeps users already found",
+    Callback = function(Value)
+        if UserDetection == Value then return end
+
+        UserDetection = Value
+        if Value then
+            Query = HttpService:GenerateGUID(false)
+            QueryUsers()
+        end
+    end
+})
 
 MenuSection:AddLabel("Menu Keybind"):AddKeyPicker("AMenuKeybind", {
     Text = "Menu Keybind",
@@ -170,15 +197,28 @@ MenuSection:AddButton({
 })
 
 Connections[#Connections + 1] = ExtendGrabLine.OnClientEvent:Connect(function(Player, Message)
-    if type(Message) ~= "string" or Message:sub(1, 11) ~= "r.presence " then return end
+    if not UserDetection or type(Message) ~= "string" then return end
+    if typeof(Player) ~= "Instance" or not Player:IsA("Player") or Player.Parent ~= Players then return end
 
-    local State = string.split(Message, " ")[2]
-    if State == "online" then
-        ResonanceUsers[Player] = true
-    elseif State == "offline" then
-        ResonanceUsers[Player] = nil
+    local Args = string.split(Message, " ")
+    local Build
+
+    if Args[1] == "r.client" and Args[2] == "2" and Args[3] == Query then
+        Build = "Current"
+    elseif Args[1] == "r.presence" and (not Args[3] or Args[3] == Query) then
+        if ResonanceUsers[Player] == "Current" then return end
+
+        if Args[2] == "online" then
+            Build = "Cracked / Old"
+        elseif Args[2] ~= "offline" then
+            return
+        end
+    else
+        return
     end
 
+    if ResonanceUsers[Player] == Build then return end
+    ResonanceUsers[Player] = Build
     RefreshUsers()
 end)
 
@@ -211,7 +251,7 @@ end)
 
 PresenceT = task.spawn(function()
     while not Library.Unloaded do
-        ExtendGrabLine:FireServer("r.presence query " .. tostring(math.random(100000, 999999)))
+        if UserDetection then QueryUsers() end
         task.wait(2)
     end
 end)
